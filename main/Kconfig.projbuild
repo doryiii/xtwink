@@ -1,0 +1,21 @@
+menu "WiFi Configuration"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+        help
+            SSID of the WiFi network to connect to.
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+        help
+            Password of the WiFi network to connect to.
+
+    config SERVER_URL
+        string "Server URL"
+        default "http://192.168.1.205:8000/test"
+        help
+            URL of the server to send GET requests to.
+
+endmenu
