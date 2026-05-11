@@ -5,6 +5,7 @@
 
 #include "network.h"
 #include "power.h"
+#include "input.h"
 
 static const char *TAG = "APP";
 
@@ -12,6 +13,7 @@ void app_main(void)
 {
     // Initialize Power & Buttons
     power_init();
+    input_init();
     xTaskCreate(&power_button_task, "power_btn", 2048, NULL, 10, NULL);
 
     // Initialize NVS
