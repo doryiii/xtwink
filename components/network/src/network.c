@@ -38,6 +38,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 
 void network_init(void)
 {
+    ESP_LOGI(TAG, "Initializing wifi SSID=%s password=%s", CONFIG_WIFI_SSID, CONFIG_WIFI_PASSWORD);
     s_wifi_event_group = xEventGroupCreate();
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
