@@ -8,11 +8,15 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_http_client.h"
+#include "esp_sleep.h"
+#include "driver/gpio.h"
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
 #define EXAMPLE_ESP_MAXIMUM_RETRY  5
+#define POWER_BUTTON_PIN GPIO_NUM_3
+#define POWER_LATCH_PIN GPIO_NUM_13
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -150,8 +154,88 @@ static void http_test_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+static void send_notification(const char* endpoint)
+{
+    char url[256];
+    strncpy(url, CONFIG_SERVER_URL, sizeof(url) - 1);
+    url[sizeof(url) - 1] = '\0';
+    
+    // Append the new endpoint
+    strncat(url, endpoint, sizeof(url) - strlen(url) - 1);
+
+    ESP_LOGI(TAG, "Sending notification to: %s", url);
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .method = HTTP_METHOD_GET,
+        .event_handler = _http_event_handle,
+        .timeout_ms = 3000,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client) {
+        esp_http_client_perform(client);
+        esp_http_client_cleanup(client);
+    }
+}
+
+static void enter_deep_sleep(void)
+{
+    ESP_LOGI(TAG, "Entering deep sleep / powering off...");
+    send_notification("/shutting_down");
+
+    // Configure GPIO13 (Battery latch MOSFET) to LOW. 
+    // On battery, this will immediately cut power to the ESP32-C3.
+    gpio_set_direction(POWER_LATCH_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(POWER_LATCH_PIN, 0);
+
+    // Isolate GPIOs and hold the latch pin state
+    esp_sleep_config_gpio_isolate();
+    gpio_deep_sleep_hold_en();
+    gpio_hold_en(POWER_LATCH_PIN);
+
+    // If connected to USB, the MOSFET is bypassed and the ESP32-C3 stays powered.
+    // In that case, we fall back to deep sleep and set GPIO 3 to wake us up.
+    esp_sleep_enable_gpio_wakeup();
+    esp_deep_sleep_start();
+}
+
+static void power_button_task(void *pvParameters)
+{
+    // Wait until the button is released if it was held during boot
+    while (gpio_get_level(POWER_BUTTON_PIN) == 0) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    int press_count = 0;
+    while (1) {
+        if (gpio_get_level(POWER_BUTTON_PIN) == 0) {
+            press_count++;
+            // If held for ~1 second (20 * 50ms)
+            if (press_count >= 20) {
+                enter_deep_sleep();
+            }
+        } else {
+            press_count = 0;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
 void app_main(void)
 {
+    // Initialize Power Button GPIO
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << POWER_BUTTON_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    // Create the power button monitoring task
+    xTaskCreate(&power_button_task, "power_button_task", 2048, NULL, 10, NULL);
+
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -162,6 +246,8 @@ void app_main(void)
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
+
+    send_notification("/started");
 
     xTaskCreate(&http_test_task, "http_test_task", 4096, NULL, 5, NULL);
 }
