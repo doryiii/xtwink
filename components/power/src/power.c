@@ -11,13 +11,18 @@ static const char *TAG = "POWER";
 void power_init(void)
 {
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << POWER_BUTTON_PIN),
+        .pin_bit_mask = (1ULL << POWER_BUTTON_PIN) | (1ULL << USB_DETECT_PIN),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
+}
+
+bool power_is_usb_connected(void)
+{
+    return gpio_get_level(USB_DETECT_PIN) == 1;
 }
 
 void power_shutdown(void)
@@ -47,7 +52,17 @@ void power_button_task(void *pvParameters)
         if (gpio_get_level(POWER_BUTTON_PIN) == 0) {
             press_count++;
             if (press_count >= 20) {
-                power_shutdown();
+                if (power_is_usb_connected()) {
+                    ESP_LOGI(TAG, "USB power detected, ignoring shutdown request");
+                    network_send_notification("/power/button/shutdown_ignored_usb");
+                    // Wait for release to avoid multiple notifications
+                    while (gpio_get_level(POWER_BUTTON_PIN) == 0) {
+                        vTaskDelay(pdMS_TO_TICKS(50));
+                    }
+                    press_count = 0;
+                } else {
+                    power_shutdown();
+                }
             }
         } else {
             press_count = 0;
