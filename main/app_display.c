@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "nvs.h"
 #include <string.h>
 
 #include "pins.h"
@@ -32,9 +33,40 @@ void app_display_send_cmd(display_cmd_t cmd) {
     }
 }
 
+static void save_current_image_idx(int idx) {
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_set_i32(nvs_handle, "img_idx", idx);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    } else {
+        ESP_LOGE(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
+    }
+}
+
 static void display_task(void *pvParameters) {
     epd_init(epd_spi);
+    
     current_image_idx = 0;
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        int32_t saved_idx = 0;
+        err = nvs_get_i32(nvs_handle, "img_idx", &saved_idx);
+        if (err == ESP_OK && app_image_count > 0) {
+            if (saved_idx >= 0 && saved_idx < app_image_count) {
+                current_image_idx = saved_idx;
+                ESP_LOGI(TAG, "Loaded image index %d from NVS", current_image_idx);
+            } else {
+                ESP_LOGI(TAG, "Saved image index %d is out of bounds, resetting to 0", (int)saved_idx);
+                current_image_idx = 0;
+            }
+        }
+        nvs_close(nvs_handle);
+    } else {
+        ESP_LOGE(TAG, "Error (%s) opening NVS handle for reading!", esp_err_to_name(err));
+    }
     
     // Draw first image on boot if available
     if (app_images && app_image_count > 0) {
@@ -56,12 +88,14 @@ static void display_task(void *pvParameters) {
                 case DISPLAY_CMD_NEXT_IMAGE:
                     if (app_image_count > 0) {
                         current_image_idx = (current_image_idx + 1) % app_image_count;
+                        save_current_image_idx(current_image_idx);
                         memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
                     }
                     break;
                 case DISPLAY_CMD_PREV_IMAGE:
                     if (app_image_count > 0) {
                         current_image_idx = (current_image_idx - 1 + app_image_count) % app_image_count;
+                        save_current_image_idx(current_image_idx);
                         memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
                     }
                     break;

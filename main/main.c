@@ -27,6 +27,14 @@ static void btn_callback(int btn, int state) {
 
 void app_main(void)
 {
+    // Initialize NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
     // Initialize Power & Buttons
     power_init();
     input_init();
@@ -36,14 +44,6 @@ void app_main(void)
     // Initialize Display
     app_display_init();
     app_display_set_images(image_array, image_count);
-
-    // Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
-      ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
 
     // Initialize Network
     network_init();
