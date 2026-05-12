@@ -1,0 +1,123 @@
+#include "epd_control.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "esp_log.h"
+#include "driver/gpio.h"
+#include "driver/spi_master.h"
+#include <string.h>
+
+#include "pins.h"
+#include "epd_driver.h"
+#include "drawing.h"
+#include "test_img.h"
+
+static const char *TAG = "EPD_CTRL";
+
+static QueueHandle_t epd_cmd_queue = NULL;
+static uint8_t framebuffer[FB_SIZE];
+static spi_device_handle_t epd_spi;
+static int current_image_idx = -1;
+
+void epd_send_cmd(epd_cmd_t cmd) {
+    if (epd_cmd_queue) {
+        xQueueSend(epd_cmd_queue, &cmd, 0);
+    }
+}
+
+static void epd_task(void *pvParameters) {
+    epd_init(epd_spi);
+    current_image_idx = 0;
+    
+    // Draw first image on boot
+    memcpy(framebuffer, image_array[current_image_idx], FB_SIZE);
+    epd_write_grayscale(epd_spi, framebuffer, 2); // Full refresh
+
+    while (1) {
+        epd_cmd_t cmd;
+        if (xQueueReceive(epd_cmd_queue, &cmd, portMAX_DELAY)) {
+            ESP_LOGI(TAG, "Received EPD command: %d", cmd);
+            
+            bool is_test_pattern = false;
+            int refresh_mode = 1; // Default to partial refresh
+            
+            switch (cmd) {
+                case EPD_CMD_NEXT_IMAGE:
+                    current_image_idx = (current_image_idx + 1) % image_count;
+                    memcpy(framebuffer, image_array[current_image_idx], FB_SIZE);
+                    break;
+                case EPD_CMD_PREV_IMAGE:
+                    current_image_idx = (current_image_idx - 1 + image_count) % image_count;
+                    memcpy(framebuffer, image_array[current_image_idx], FB_SIZE);
+                    break;
+                case EPD_CMD_FULL_REFRESH:
+                    refresh_mode = 2; // Full refresh
+                    break;
+                case EPD_CMD_TEST_PATTERN:
+                    is_test_pattern = true;
+                    refresh_mode = 2; // Full refresh for test pattern
+                    for (int y = 0; y < 480; y++) {
+                        uint8_t fill_val = 0;
+                        if (y < 120) fill_val = 0x00;
+                        else if (y < 240) fill_val = 0x55;
+                        else if (y < 360) fill_val = 0xAA;
+                        else fill_val = 0xFF;
+                        memset(framebuffer + (y * 200), fill_val, 200);
+                    }
+                    break;
+            }
+
+            if (!is_test_pattern && cmd != EPD_CMD_FULL_REFRESH) {
+                // If it's an image change, we might want to do a partial refresh
+                // and maybe draw text
+                char label[64];
+                snprintf(label, sizeof(label), "Image %d/%d", current_image_idx + 1, image_count);
+                // draw_text modifies framebuffer, assuming we have it
+                draw_text(framebuffer, 20, 750, label, 0); 
+                
+                // If using mode 0, we might need to upload red ram first
+                // epd_upload_red_ram(epd_spi, framebuffer);
+            }
+            
+            epd_write_grayscale(epd_spi, framebuffer, refresh_mode);
+            ESP_LOGI(TAG, "EPD update complete.");
+        }
+    }
+}
+
+void epd_control_init(void) {
+    ESP_LOGI(TAG, "Initializing EPD control...");
+    
+    gpio_reset_pin(PIN_NUM_DC);
+    gpio_reset_pin(PIN_NUM_RST);
+    gpio_reset_pin(PIN_NUM_BUSY);
+    gpio_reset_pin(PIN_NUM_CS);
+    gpio_set_direction(PIN_NUM_DC, GPIO_MODE_OUTPUT);
+    gpio_set_direction(PIN_NUM_RST, GPIO_MODE_OUTPUT);
+    gpio_set_direction(PIN_NUM_CS, GPIO_MODE_OUTPUT);
+    gpio_set_direction(PIN_NUM_BUSY, GPIO_MODE_INPUT);
+    gpio_set_level(PIN_NUM_CS, 1);
+
+    spi_bus_config_t buscfg = {
+        .miso_io_num = PIN_NUM_MISO,
+        .mosi_io_num = PIN_NUM_MOSI,
+        .sclk_io_num = PIN_NUM_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4092
+    };
+    
+    spi_device_interface_config_t devcfg = {
+        .clock_speed_hz = 10 * 1000 * 1000, 
+        .mode = 0,                               
+        .spics_io_num = -1,              
+        .queue_size = 7,                          
+    };
+
+    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
+    ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &devcfg, &epd_spi));
+
+    epd_cmd_queue = xQueueCreate(5, sizeof(epd_cmd_t));
+    
+    xTaskCreate(&epd_task, "epd_task", 8192, NULL, 5, NULL);
+}

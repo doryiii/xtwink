@@ -5,6 +5,7 @@
 #include "esp_adc/adc_oneshot.h"
 #include "input.h"
 #include "network.h"
+#include "epd_control.h"
 
 static const char *TAG = "INPUT";
 
@@ -95,6 +96,16 @@ static void input_task(void *pvParameters) {
                         char endpoint[64];
                         snprintf(endpoint, sizeof(endpoint), "/button/%s/pressed", BUTTON_NAMES[i]);
                         network_send_notification(endpoint);
+
+                        if (i == BTN_LEFT) {
+                            epd_send_cmd(EPD_CMD_PREV_IMAGE);
+                        } else if (i == BTN_RIGHT) {
+                            epd_send_cmd(EPD_CMD_NEXT_IMAGE);
+                        } else if (i == BTN_UP) {
+                            epd_send_cmd(EPD_CMD_FULL_REFRESH);
+                        } else if (i == BTN_DOWN) {
+                            epd_send_cmd(EPD_CMD_TEST_PATTERN);
+                        }
                     }
                     if (released & (1 << i)) {
                         ESP_LOGI(TAG, "Button released: %s", BUTTON_NAMES[i]);

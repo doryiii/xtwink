@@ -6,6 +6,7 @@
 #include "network.h"
 #include "power.h"
 #include "input.h"
+#include "epd_control.h"
 
 static const char *TAG = "APP";
 
@@ -15,6 +16,9 @@ void app_main(void)
     power_init();
     input_init();
     xTaskCreate(&power_button_task, "power_btn", 2048, NULL, 10, NULL);
+
+    // Initialize EPD
+    epd_control_init();
 
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
