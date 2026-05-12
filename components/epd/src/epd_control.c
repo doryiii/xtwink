@@ -88,7 +88,7 @@ static void epd_task(void *pvParameters) {
                 char label[64];
                 snprintf(label, sizeof(label), "Image %d/%d", current_image_idx + 1, app_image_count);
                 // draw_text modifies framebuffer, assuming we have it
-                draw_text(framebuffer, 20, 750, label, 0); 
+                draw_text(framebuffer, 10, 770, label, 0); 
                 
                 // If using mode 0, we might need to upload red ram first
                 // epd_upload_red_ram(epd_spi, framebuffer);
