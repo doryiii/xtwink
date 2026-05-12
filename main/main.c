@@ -7,6 +7,7 @@
 #include "power.h"
 #include "input.h"
 #include "epd_control.h"
+#include "test_img.h"
 
 static const char *TAG = "APP";
 
@@ -19,6 +20,7 @@ void app_main(void)
 
     // Initialize EPD
     epd_control_init();
+    epd_control_set_images(image_array, image_count);
 
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();

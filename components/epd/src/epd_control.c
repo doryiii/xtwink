@@ -10,7 +10,6 @@
 #include "pins.h"
 #include "epd_driver.h"
 #include "drawing.h"
-#include "test_img.h"
 
 static const char *TAG = "EPD_CTRL";
 
@@ -18,6 +17,14 @@ static QueueHandle_t epd_cmd_queue = NULL;
 static uint8_t framebuffer[FB_SIZE];
 static spi_device_handle_t epd_spi;
 static int current_image_idx = -1;
+
+static const uint8_t* const* app_images = NULL;
+static int app_image_count = 0;
+
+void epd_control_set_images(const uint8_t* const* images, int count) {
+    app_images = images;
+    app_image_count = count;
+}
 
 void epd_send_cmd(epd_cmd_t cmd) {
     if (epd_cmd_queue) {
@@ -29,8 +36,12 @@ static void epd_task(void *pvParameters) {
     epd_init(epd_spi);
     current_image_idx = 0;
     
-    // Draw first image on boot
-    memcpy(framebuffer, image_array[current_image_idx], FB_SIZE);
+    // Draw first image on boot if available
+    if (app_images && app_image_count > 0) {
+        memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
+    } else {
+        memset(framebuffer, 0xFF, FB_SIZE); // White
+    }
     epd_write_grayscale(epd_spi, framebuffer, 2); // Full refresh
 
     while (1) {
@@ -43,12 +54,16 @@ static void epd_task(void *pvParameters) {
             
             switch (cmd) {
                 case EPD_CMD_NEXT_IMAGE:
-                    current_image_idx = (current_image_idx + 1) % image_count;
-                    memcpy(framebuffer, image_array[current_image_idx], FB_SIZE);
+                    if (app_image_count > 0) {
+                        current_image_idx = (current_image_idx + 1) % app_image_count;
+                        memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
+                    }
                     break;
                 case EPD_CMD_PREV_IMAGE:
-                    current_image_idx = (current_image_idx - 1 + image_count) % image_count;
-                    memcpy(framebuffer, image_array[current_image_idx], FB_SIZE);
+                    if (app_image_count > 0) {
+                        current_image_idx = (current_image_idx - 1 + app_image_count) % app_image_count;
+                        memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
+                    }
                     break;
                 case EPD_CMD_FULL_REFRESH:
                     refresh_mode = 2; // Full refresh
@@ -67,11 +82,11 @@ static void epd_task(void *pvParameters) {
                     break;
             }
 
-            if (!is_test_pattern && cmd != EPD_CMD_FULL_REFRESH) {
+            if (!is_test_pattern && cmd != EPD_CMD_FULL_REFRESH && app_image_count > 0) {
                 // If it's an image change, we might want to do a partial refresh
                 // and maybe draw text
                 char label[64];
-                snprintf(label, sizeof(label), "Image %d/%d", current_image_idx + 1, image_count);
+                snprintf(label, sizeof(label), "Image %d/%d", current_image_idx + 1, app_image_count);
                 // draw_text modifies framebuffer, assuming we have it
                 draw_text(framebuffer, 20, 750, label, 0); 
                 
