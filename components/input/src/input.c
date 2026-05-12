@@ -5,21 +5,12 @@
 #include "esp_adc/adc_oneshot.h"
 #include "input.h"
 #include "network.h"
-#include "epd_control.h"
 
 static const char *TAG = "INPUT";
 
 #define BUTTON_ADC_PIN_1 GPIO_NUM_1
 #define BUTTON_ADC_PIN_2 GPIO_NUM_2
 #define POWER_BUTTON_PIN GPIO_NUM_3
-
-#define BTN_BACK 0
-#define BTN_CONFIRM 1
-#define BTN_LEFT 2
-#define BTN_RIGHT 3
-#define BTN_UP 4
-#define BTN_DOWN 5
-#define BTN_POWER 6
 
 static const char* BUTTON_NAMES[] = {
     "back", "confirm", "left", "right", "up", "down", "power"
@@ -34,6 +25,11 @@ static const int ADC_RANGES_2[] = {ADC_NO_BUTTON, 1120, -1};
 static const int NUM_BUTTONS_2 = 2;
 
 static adc_oneshot_unit_handle_t adc1_handle;
+static input_btn_cb_t button_callback = NULL;
+
+void input_set_button_callback(input_btn_cb_t cb) {
+    button_callback = cb;
+}
 
 static int get_button_from_adc(int adc_value, const int ranges[], int num_buttons) {
     for (int i = 0; i < num_buttons; i++) {
@@ -97,14 +93,8 @@ static void input_task(void *pvParameters) {
                         snprintf(endpoint, sizeof(endpoint), "/button/%s/pressed", BUTTON_NAMES[i]);
                         network_send_notification(endpoint);
 
-                        if (i == BTN_LEFT) {
-                            epd_send_cmd(EPD_CMD_PREV_IMAGE);
-                        } else if (i == BTN_RIGHT) {
-                            epd_send_cmd(EPD_CMD_NEXT_IMAGE);
-                        } else if (i == BTN_UP) {
-                            epd_send_cmd(EPD_CMD_FULL_REFRESH);
-                        } else if (i == BTN_DOWN) {
-                            epd_send_cmd(EPD_CMD_TEST_PATTERN);
+                        if (button_callback) {
+                            button_callback(i, 1);
                         }
                     }
                     if (released & (1 << i)) {
@@ -112,6 +102,10 @@ static void input_task(void *pvParameters) {
                         char endpoint[64];
                         snprintf(endpoint, sizeof(endpoint), "/button/%s/released", BUTTON_NAMES[i]);
                         network_send_notification(endpoint);
+
+                        if (button_callback) {
+                            button_callback(i, 0);
+                        }
                     }
                 }
 

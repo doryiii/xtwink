@@ -1,4 +1,4 @@
-#include "epd_control.h"
+#include "app_display.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -11,9 +11,9 @@
 #include "epd_driver.h"
 #include "drawing.h"
 
-static const char *TAG = "EPD_CTRL";
+static const char *TAG = "APP_DISPLAY";
 
-static QueueHandle_t epd_cmd_queue = NULL;
+static QueueHandle_t display_cmd_queue = NULL;
 static uint8_t framebuffer[FB_SIZE];
 static spi_device_handle_t epd_spi;
 static int current_image_idx = -1;
@@ -21,18 +21,18 @@ static int current_image_idx = -1;
 static const uint8_t* const* app_images = NULL;
 static int app_image_count = 0;
 
-void epd_control_set_images(const uint8_t* const* images, int count) {
+void app_display_set_images(const uint8_t* const* images, int count) {
     app_images = images;
     app_image_count = count;
 }
 
-void epd_send_cmd(epd_cmd_t cmd) {
-    if (epd_cmd_queue) {
-        xQueueSend(epd_cmd_queue, &cmd, 0);
+void app_display_send_cmd(display_cmd_t cmd) {
+    if (display_cmd_queue) {
+        xQueueSend(display_cmd_queue, &cmd, 0);
     }
 }
 
-static void epd_task(void *pvParameters) {
+static void display_task(void *pvParameters) {
     epd_init(epd_spi);
     current_image_idx = 0;
     
@@ -45,30 +45,30 @@ static void epd_task(void *pvParameters) {
     epd_write_grayscale(epd_spi, framebuffer, 2); // Full refresh
 
     while (1) {
-        epd_cmd_t cmd;
-        if (xQueueReceive(epd_cmd_queue, &cmd, portMAX_DELAY)) {
-            ESP_LOGI(TAG, "Received EPD command: %d", cmd);
+        display_cmd_t cmd;
+        if (xQueueReceive(display_cmd_queue, &cmd, portMAX_DELAY)) {
+            ESP_LOGI(TAG, "Received display command: %d", cmd);
             
             bool is_test_pattern = false;
             int refresh_mode = 1; // Default to partial refresh
             
             switch (cmd) {
-                case EPD_CMD_NEXT_IMAGE:
+                case DISPLAY_CMD_NEXT_IMAGE:
                     if (app_image_count > 0) {
                         current_image_idx = (current_image_idx + 1) % app_image_count;
                         memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
                     }
                     break;
-                case EPD_CMD_PREV_IMAGE:
+                case DISPLAY_CMD_PREV_IMAGE:
                     if (app_image_count > 0) {
                         current_image_idx = (current_image_idx - 1 + app_image_count) % app_image_count;
                         memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
                     }
                     break;
-                case EPD_CMD_FULL_REFRESH:
+                case DISPLAY_CMD_FULL_REFRESH:
                     refresh_mode = 2; // Full refresh
                     break;
-                case EPD_CMD_TEST_PATTERN:
+                case DISPLAY_CMD_TEST_PATTERN:
                     is_test_pattern = true;
                     refresh_mode = 2; // Full refresh for test pattern
                     for (int y = 0; y < 480; y++) {
@@ -82,16 +82,10 @@ static void epd_task(void *pvParameters) {
                     break;
             }
 
-            if (!is_test_pattern && cmd != EPD_CMD_FULL_REFRESH && app_image_count > 0) {
-                // If it's an image change, we might want to do a partial refresh
-                // and maybe draw text
+            if (!is_test_pattern && cmd != DISPLAY_CMD_FULL_REFRESH && app_image_count > 0) {
                 char label[64];
                 snprintf(label, sizeof(label), "Image %d/%d", current_image_idx + 1, app_image_count);
-                // draw_text modifies framebuffer, assuming we have it
                 draw_text(framebuffer, 10, 770, label, 0); 
-                
-                // If using mode 0, we might need to upload red ram first
-                // epd_upload_red_ram(epd_spi, framebuffer);
             }
             
             epd_write_grayscale(epd_spi, framebuffer, refresh_mode);
@@ -100,8 +94,8 @@ static void epd_task(void *pvParameters) {
     }
 }
 
-void epd_control_init(void) {
-    ESP_LOGI(TAG, "Initializing EPD control...");
+void app_display_init(void) {
+    ESP_LOGI(TAG, "Initializing display control...");
     
     gpio_reset_pin(PIN_NUM_DC);
     gpio_reset_pin(PIN_NUM_RST);
@@ -132,7 +126,7 @@ void epd_control_init(void) {
     ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
     ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &devcfg, &epd_spi));
 
-    epd_cmd_queue = xQueueCreate(5, sizeof(epd_cmd_t));
+    display_cmd_queue = xQueueCreate(5, sizeof(display_cmd_t));
     
-    xTaskCreate(&epd_task, "epd_task", 8192, NULL, 5, NULL);
+    xTaskCreate(&display_task, "display_task", 8192, NULL, 5, NULL);
 }

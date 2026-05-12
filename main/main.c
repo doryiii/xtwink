@@ -6,21 +6,36 @@
 #include "network.h"
 #include "power.h"
 #include "input.h"
-#include "epd_control.h"
+#include "app_display.h"
 #include "test_img.h"
 
 static const char *TAG = "APP";
+
+static void btn_callback(int btn, int state) {
+    if (state == 1) { // Pressed
+        if (btn == BTN_LEFT) {
+            app_display_send_cmd(DISPLAY_CMD_PREV_IMAGE);
+        } else if (btn == BTN_RIGHT) {
+            app_display_send_cmd(DISPLAY_CMD_NEXT_IMAGE);
+        } else if (btn == BTN_UP) {
+            app_display_send_cmd(DISPLAY_CMD_FULL_REFRESH);
+        } else if (btn == BTN_DOWN) {
+            app_display_send_cmd(DISPLAY_CMD_TEST_PATTERN);
+        }
+    }
+}
 
 void app_main(void)
 {
     // Initialize Power & Buttons
     power_init();
     input_init();
+    input_set_button_callback(btn_callback);
     xTaskCreate(&power_button_task, "power_btn", 2048, NULL, 10, NULL);
 
-    // Initialize EPD
-    epd_control_init();
-    epd_control_set_images(image_array, image_count);
+    // Initialize Display
+    app_display_init();
+    app_display_set_images(image_array, image_count);
 
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
