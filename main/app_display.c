@@ -71,6 +71,9 @@ static void display_task(void *pvParameters) {
     // Draw first image on boot if available
     if (app_images && app_image_count > 0) {
         memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
+        char label[64];
+        snprintf(label, sizeof(label), "Image %d/%d", current_image_idx + 1, app_image_count);
+        draw_text(framebuffer, 10, 770, label, 0); 
     } else {
         memset(framebuffer, 0xFF, FB_SIZE); // White
     }
