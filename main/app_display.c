@@ -74,7 +74,7 @@ static void display_task(void *pvParameters) {
     } else {
         memset(framebuffer, 0xFF, FB_SIZE); // White
     }
-    epd_write_grayscale(epd_spi, framebuffer, 2); // Full refresh
+    epd_write_grayscale(epd_spi, framebuffer, 1); // Fast/partial refresh
 
     while (1) {
         display_cmd_t cmd;
