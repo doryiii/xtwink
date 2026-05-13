@@ -23,6 +23,9 @@ bool power_is_usb_connected(void);
  */
 void power_shutdown(void);
 
+typedef void (*power_shutdown_cb_t)(void);
+void power_register_shutdown_cb(power_shutdown_cb_t cb);
+
 /**
  * @brief Task for monitoring power button
  */

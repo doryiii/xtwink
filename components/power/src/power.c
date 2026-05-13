@@ -8,6 +8,13 @@
 
 static const char *TAG = "POWER";
 
+static power_shutdown_cb_t s_shutdown_cb = NULL;
+
+void power_register_shutdown_cb(power_shutdown_cb_t cb)
+{
+    s_shutdown_cb = cb;
+}
+
 void power_init(void)
 {
     gpio_config_t io_conf = {
@@ -28,6 +35,11 @@ bool power_is_usb_connected(void)
 void power_shutdown(void)
 {
     ESP_LOGI(TAG, "Shutting down...");
+    
+    if (s_shutdown_cb) {
+        s_shutdown_cb();
+    }
+
     network_send_notification("/shutting_down");
 
     gpio_set_direction(POWER_LATCH_PIN, GPIO_MODE_OUTPUT);

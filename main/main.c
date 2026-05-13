@@ -9,8 +9,6 @@
 #include "app_display.h"
 #include "test_img.h"
 
-static const char *TAG = "APP";
-
 static void btn_callback(int btn, int state) {
     if (state == 1) { // Pressed
         if (btn == BTN_LEFT) {
@@ -37,6 +35,7 @@ void app_main(void)
 
     // Initialize Power & Buttons
     power_init();
+    power_register_shutdown_cb(app_display_shutdown);
     input_init();
     input_set_button_callback(btn_callback);
     xTaskCreate(&power_button_task, "power_btn", 2048, NULL, 10, NULL);

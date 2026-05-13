@@ -117,6 +117,10 @@ static void display_task(void *pvParameters) {
                         memset(framebuffer + (y * 200), fill_val, 200);
                     }
                     break;
+                case DISPLAY_CMD_SLEEP:
+                    epd_deep_sleep(epd_spi);
+                    ESP_LOGI(TAG, "Display in deep sleep.");
+                    continue; // Skip the refresh logic below
             }
 
             if (!is_test_pattern && cmd != DISPLAY_CMD_FULL_REFRESH && app_image_count > 0) {
@@ -129,6 +133,14 @@ static void display_task(void *pvParameters) {
             ESP_LOGI(TAG, "EPD update complete.");
         }
     }
+}
+
+void app_display_shutdown(void) {
+    ESP_LOGI(TAG, "Preparing display for shutdown...");
+    app_display_send_cmd(DISPLAY_CMD_SLEEP);
+    // SSD1677 power down takes some time for analog rails to discharge.
+    // 2 seconds is more than enough to be safe.
+    vTaskDelay(pdMS_TO_TICKS(2000));
 }
 
 void app_display_init(void) {
