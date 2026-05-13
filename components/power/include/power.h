@@ -27,6 +27,13 @@ typedef void (*power_shutdown_cb_t)(void);
 void power_register_shutdown_cb(power_shutdown_cb_t cb);
 
 /**
+ * @brief Get the battery percentage
+ * 
+ * @return int Battery percentage (0-100)
+ */
+int power_get_battery_percentage(void);
+
+/**
  * @brief Task for monitoring power button
  */
 void power_button_task(void *pvParameters);

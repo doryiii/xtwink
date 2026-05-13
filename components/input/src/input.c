@@ -5,6 +5,7 @@
 #include "esp_adc/adc_oneshot.h"
 #include "input.h"
 #include "network.h"
+#include "adc_shared.h"
 
 static const char *TAG = "INPUT";
 
@@ -117,11 +118,11 @@ static void input_task(void *pvParameters) {
 }
 
 void input_init(void) {
-    // Configure ADC1
-    adc_oneshot_unit_init_cfg_t init_config1 = {
-        .unit_id = ADC_UNIT_1,
-    };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
+    // Get the shared ADC1 handle initialized by the adc_shared component
+    if (adc_shared_get_unit1_handle(&adc1_handle) != ESP_OK || adc1_handle == NULL) {
+        ESP_LOGE(TAG, "Failed to get shared ADC unit");
+        return;
+    }
 
     // Configure ADC channels
     adc_oneshot_chan_cfg_t config = {

@@ -11,6 +11,7 @@
 #include "pins.h"
 #include "epd_driver.h"
 #include "drawing.h"
+#include "power.h"
 
 static const char *TAG = "APP_DISPLAY";
 
@@ -74,6 +75,10 @@ static void display_task(void *pvParameters) {
         char label[64];
         snprintf(label, sizeof(label), "Image %d/%d", current_image_idx + 1, app_image_count);
         draw_text(framebuffer, 10, 770, label, 0); 
+
+        char batt_label[32];
+        snprintf(batt_label, sizeof(batt_label), "batt: %d%%", power_get_battery_percentage());
+        draw_text(framebuffer, 320, 10, batt_label, 0);
     } else {
         memset(framebuffer, 0xFF, FB_SIZE); // White
     }
@@ -118,6 +123,10 @@ static void display_task(void *pvParameters) {
                     }
                     break;
                 case DISPLAY_CMD_SLEEP:
+                    if (app_images && app_image_count > 0 && current_image_idx >= 0) {
+                        memcpy(framebuffer, app_images[current_image_idx], FB_SIZE);
+                        epd_write_grayscale(epd_spi, framebuffer, 1); // Partial refresh to remove text
+                    }
                     epd_deep_sleep(epd_spi);
                     ESP_LOGI(TAG, "Display in deep sleep.");
                     continue; // Skip the refresh logic below
@@ -127,6 +136,10 @@ static void display_task(void *pvParameters) {
                 char label[64];
                 snprintf(label, sizeof(label), "Image %d/%d", current_image_idx + 1, app_image_count);
                 draw_text(framebuffer, 10, 770, label, 0); 
+
+                char batt_label[32];
+                snprintf(batt_label, sizeof(batt_label), "batt: %d%%", power_get_battery_percentage());
+                draw_text(framebuffer, 320, 10, batt_label, 0);
             }
             
             epd_write_grayscale(epd_spi, framebuffer, refresh_mode);
