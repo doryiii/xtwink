@@ -16,6 +16,7 @@
 static const char *TAG = "APP_DISPLAY";
 
 static QueueHandle_t display_cmd_queue = NULL;
+static SemaphoreHandle_t shutdown_done_sem = NULL;
 static uint8_t framebuffer[FB_SIZE];
 static spi_device_handle_t epd_spi;
 static int current_image_idx = -1;
@@ -129,6 +130,9 @@ static void display_task(void *pvParameters) {
                     }
                     epd_deep_sleep(epd_spi);
                     ESP_LOGI(TAG, "Display in deep sleep.");
+                    if (shutdown_done_sem) {
+                        xSemaphoreGive(shutdown_done_sem);
+                    }
                     continue; // Skip the refresh logic below
             }
 
@@ -151,13 +155,21 @@ static void display_task(void *pvParameters) {
 void app_display_shutdown(void) {
     ESP_LOGI(TAG, "Preparing display for shutdown...");
     app_display_send_cmd(DISPLAY_CMD_SLEEP);
+    if (shutdown_done_sem) {
+        // Wait for up to 10 seconds for the display task to finish the refresh and sleep sequence
+        if (xSemaphoreTake(shutdown_done_sem, pdMS_TO_TICKS(10000)) != pdTRUE) {
+            ESP_LOGW(TAG, "Timed out waiting for display shutdown!");
+        }
+    }
     // SSD1677 power down takes some time for analog rails to discharge.
-    // 2 seconds is more than enough to be safe.
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    // Give it a little extra time to be absolutely safe after the driver says it's done.
+    vTaskDelay(pdMS_TO_TICKS(500));
 }
 
 void app_display_init(void) {
     ESP_LOGI(TAG, "Initializing display control...");
+    
+    shutdown_done_sem = xSemaphoreCreateBinary();
     
     gpio_reset_pin(PIN_NUM_DC);
     gpio_reset_pin(PIN_NUM_RST);

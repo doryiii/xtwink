@@ -90,6 +90,7 @@ static void send_stream_end() {
 }
 
 void wait_busy() {
+    vTaskDelay(pdMS_TO_TICKS(10)); // Safety delay to allow BUSY pin to go high
     while(gpio_get_level(PIN_NUM_BUSY) == 1) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
