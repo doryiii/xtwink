@@ -31,7 +31,9 @@ void app_display_set_images(const uint8_t* const* images, int count) {
 
 void app_display_send_cmd(display_cmd_t cmd) {
     if (display_cmd_queue) {
-        xQueueSend(display_cmd_queue, &cmd, 0);
+        if (xQueueSend(display_cmd_queue, &cmd, portMAX_DELAY) != pdTRUE) {
+            ESP_LOGE(TAG, "Failed to send display command %d!", cmd);
+        }
     }
 }
 
@@ -156,8 +158,8 @@ void app_display_shutdown(void) {
     ESP_LOGI(TAG, "Preparing display for shutdown...");
     app_display_send_cmd(DISPLAY_CMD_SLEEP);
     if (shutdown_done_sem) {
-        // Wait for up to 10 seconds for the display task to finish the refresh and sleep sequence
-        if (xSemaphoreTake(shutdown_done_sem, pdMS_TO_TICKS(10000)) != pdTRUE) {
+        // Wait for up to 30 seconds for the display task to finish the refresh and sleep sequence
+        if (xSemaphoreTake(shutdown_done_sem, pdMS_TO_TICKS(30000)) != pdTRUE) {
             ESP_LOGW(TAG, "Timed out waiting for display shutdown!");
         }
     }

@@ -91,8 +91,13 @@ static void send_stream_end() {
 
 void wait_busy() {
     vTaskDelay(pdMS_TO_TICKS(10)); // Safety delay to allow BUSY pin to go high
-    while(gpio_get_level(PIN_NUM_BUSY) == 1) {
+    int timeout_ms = 10000;
+    while(gpio_get_level(PIN_NUM_BUSY) == 1 && timeout_ms > 0) {
         vTaskDelay(pdMS_TO_TICKS(10));
+        timeout_ms -= 10;
+    }
+    if (timeout_ms <= 0) {
+        ESP_LOGE(TAG, "wait_busy timed out after 10 seconds!");
     }
 }
 
@@ -130,11 +135,9 @@ void epd_init(spi_device_handle_t spi) {
 }
 
 void epd_deep_sleep(spi_device_handle_t spi) {
-    ESP_LOGI(TAG, "Properly powering down EPD analog rails...");
-    send_cmd(spi, 0x21); send_data_byte(spi, 0x40); 
-    send_cmd(spi, 0x22); send_data_byte(spi, 0x03); 
-    send_cmd(spi, 0x20);
-    wait_busy();
+    ESP_LOGI(TAG, "Entering EPD deep sleep mode...");
+    // Note: The analog rails are already powered down by the 0xC7 command at the end of the refresh sequence.
+    // Sending the power-off sequence again here causes the BUSY pin to hang on some panels.
     send_cmd(spi, 0x10); send_data_byte(spi, 0x01); 
     ESP_LOGI(TAG, "EPD deep sleep command sent.");
 }
